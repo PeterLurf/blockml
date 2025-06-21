@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useState, useRef } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ModelTemplates } from "@/components/model-templates"
-import { useState } from "react"
+import { useBlockMLStore } from "@/lib/store"
 import {
   Search,
   ChevronDown,
@@ -22,6 +23,9 @@ import {
   Star,
   Grid,
   List,
+  Plus,
+  Sparkles,
+  Brain,
 } from "lucide-react"
 
 const blockCategories = {
@@ -82,6 +86,87 @@ const blockCategories = {
   },
 }
 
+// Quick start templates for common neural network architectures
+const quickStartTemplates = {
+  simpleClassifier: {
+    name: "Simple Classifier",
+    description: "Basic neural network for classification tasks",
+    nodes: [
+      {
+        id: "data-1",
+        type: "mlBlock",
+        position: { x: 100, y: 100 },
+        data: {
+          blockType: "DataLoader",
+          label: "Data Input",
+          inputs: [],
+          outputs: ["data"],
+          parameters: { inputShape: [28, 28, 1], batchSize: 32 },
+        },
+      },
+      {
+        id: "flatten-1",
+        type: "mlBlock",
+        position: { x: 100, y: 200 },
+        data: {
+          blockType: "Flatten",
+          label: "Flatten",
+          inputs: ["input"],
+          outputs: ["output"],
+          parameters: {},
+        },
+      },
+      {
+        id: "dense-1",
+        type: "mlBlock",
+        position: { x: 100, y: 300 },
+        data: {
+          blockType: "Dense",
+          label: "Hidden Layer",
+          inputs: ["input"],
+          outputs: ["output"],
+          parameters: { units: 128, activation: "relu" },
+        },
+      },
+      {
+        id: "dense-2",
+        type: "mlBlock",
+        position: { x: 100, y: 400 },
+        data: {
+          blockType: "Dense",
+          label: "Output Layer",
+          inputs: ["input"],
+          outputs: ["output"],
+          parameters: { units: 10, activation: "softmax" },
+        },
+      },
+    ],
+    connections: [
+      {
+        id: "e1",
+        source: "data-1",
+        target: "flatten-1",
+        sourceHandle: "data",
+        targetHandle: "input",
+      },
+      {
+        id: "e2",
+        source: "flatten-1",
+        target: "dense-1",
+        sourceHandle: "output",
+        targetHandle: "input",
+      },
+      {
+        id: "e3",
+        source: "dense-1",
+        target: "dense-2",
+        sourceHandle: "output",
+        targetHandle: "input",
+      },
+    ],
+  },
+}
+
 export function BlockLibrary() {
   const [searchTerm, setSearchTerm] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -89,12 +174,16 @@ export function BlockLibrary() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(["Core Layers", "Data"]), // Default expanded categories
   )
+  const dragImageRef = useRef<HTMLDivElement | null>(null)
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
-    event.dataTransfer.setData("application/blockml", nodeType)
-    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setData("text/plain", nodeType)
+    event.dataTransfer.effectAllowed = "copy"
 
-    // Add visual feedback
+    if (dragImageRef.current) {
+      dragImageRef.current.remove()
+    }
+
     const dragImage = document.createElement("div")
     dragImage.innerHTML = `
       <div style="
@@ -103,40 +192,51 @@ export function BlockLibrary() {
         border-radius: 8px; 
         padding: 8px 12px; 
         font-size: 12px; 
-        font-weight: 500;
+        font-weight: 600;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: sans-serif;
+        color: #1e3a8a;
       ">
-        ${nodeType}
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke: #3b82f6;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+        <span>${nodeType}</span>
       </div>
     `
     dragImage.style.position = "absolute"
     dragImage.style.top = "-1000px"
     document.body.appendChild(dragImage)
-    event.dataTransfer.setDragImage(dragImage, 50, 20)
+    event.dataTransfer.setDragImage(dragImage, 20, 20)
+    dragImageRef.current = dragImage
+  }
 
-    setTimeout(() => document.body.removeChild(dragImage), 0)
+  const onDragEnd = () => {
+    if (dragImageRef.current) {
+      dragImageRef.current.remove()
+      dragImageRef.current = null
+    }
   }
 
   const toggleCategory = (category: string) => {
     setExpandedCategories((prev) => {
-      const newExpanded = new Set(prev)
-      if (newExpanded.has(category)) {
-        newExpanded.delete(category)
+      const newSet = new Set(prev)
+      if (newSet.has(category)) {
+        newSet.delete(category)
       } else {
-        newExpanded.add(category)
+        newSet.add(category)
       }
-      return newExpanded
+      return newSet
     })
   }
 
-  const filteredCategories = Object.entries(blockCategories).reduce(
-    (acc, [category, categoryData]) => {
+  const filteredAndSortedBlocks = Object.entries(blockCategories).reduce(
+    (
+      acc: Partial<typeof blockCategories>,
+      [category, categoryData],
+    ) => {
       const filteredBlocks = categoryData.blocks
-        .filter(
-          (block) =>
-            block.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            block.description.toLowerCase().includes(searchTerm.toLowerCase()),
-        )
+        .filter((block) => block.name.toLowerCase().includes(searchTerm.toLowerCase()))
         .sort((a, b) => {
           if (sortBy === "popularity") {
             return b.popularity - a.popularity
@@ -145,11 +245,11 @@ export function BlockLibrary() {
         })
 
       if (filteredBlocks.length > 0) {
-        acc[category] = { ...categoryData, blocks: filteredBlocks }
+        acc[category as keyof typeof blockCategories] = { ...categoryData, blocks: filteredBlocks }
       }
       return acc
     },
-    {} as typeof blockCategories,
+    {} as Partial<typeof blockCategories>,
   )
 
   const getPopularityStars = (popularity: number) => {
@@ -163,6 +263,7 @@ export function BlockLibrary() {
       className={`cursor-grab active:cursor-grabbing hover:shadow-lg hover:scale-105 transition-all duration-200 ${block.color} border-2 border-dashed border-gray-300 hover:border-blue-400`}
       draggable
       onDragStart={(event) => onDragStart(event, block.name)}
+      onDragEnd={onDragEnd}
     >
       <CardHeader className={isCompact ? "pb-1" : "pb-2"}>
         <div className="flex items-center justify-between">
@@ -177,12 +278,63 @@ export function BlockLibrary() {
     </Card>
   )
 
+  const { setNodes, setConnections } = useBlockMLStore()
+
+  const createSimpleModel = () => {
+    const template = quickStartTemplates.simpleClassifier
+    setNodes(template.nodes)
+    setConnections(template.connections)
+  }
+
+  const QuickStart = () => {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="w-5 h-5 text-purple-600" />
+          <h3 className="font-semibold text-gray-900">Quick Start</h3>
+        </div>
+
+        <Card className="p-3 cursor-pointer hover:shadow-md transition-shadow border-dashed border-2 border-purple-200 hover:border-purple-400">
+          <div onClick={createSimpleModel} className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Brain className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium text-gray-900">Simple Classifier</h4>
+              <p className="text-xs text-gray-600">Ready-to-train neural network</p>
+            </div>
+            <Button size="sm" variant="outline">
+              <Plus className="w-4 h-4 mr-1" />
+              Add
+            </Button>
+          </div>
+        </Card>
+
+        <div className="text-xs text-gray-500 mt-3">
+          Click to add a pre-built model architecture to get started quickly.
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-gradient-to-b from-white to-gray-50/50">
       <Tabs defaultValue="blocks" className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-2 mx-4 mt-4">
-          <TabsTrigger value="blocks">Blocks</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 mx-4 mt-4 bg-gray-100/70 backdrop-blur-sm">
+          <TabsTrigger 
+            value="blocks"
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700"
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            Blocks
+          </TabsTrigger>
+          <TabsTrigger 
+            value="templates"
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            Templates
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="blocks" className="flex-1 overflow-y-auto">
@@ -197,12 +349,17 @@ export function BlockLibrary() {
               e.stopPropagation()
             }}
           >
+            {/* Quick Start Section */}
+            <QuickStart />
+            
             {/* Header */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Block Library</h2>
-                <Badge variant="outline" className="text-xs">
-                  {Object.values(filteredCategories).reduce((sum, cat) => sum + cat.blocks.length, 0)} blocks
+                <h2 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  Block Library
+                </h2>
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                  {Object.values(filteredAndSortedBlocks).reduce((sum, cat) => sum + cat.blocks.length, 0)} blocks
                 </Badge>
               </div>
 
@@ -213,7 +370,7 @@ export function BlockLibrary() {
                   placeholder="Search blocks..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 bg-white/70 backdrop-blur-sm border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -224,6 +381,7 @@ export function BlockLibrary() {
                     size="sm"
                     variant={viewMode === "grid" ? "default" : "outline"}
                     onClick={() => setViewMode("grid")}
+                    className={viewMode === "grid" ? "bg-blue-600 hover:bg-blue-700" : ""}
                   >
                     <Grid className="w-4 h-4" />
                   </Button>
@@ -231,6 +389,7 @@ export function BlockLibrary() {
                     size="sm"
                     variant={viewMode === "list" ? "default" : "outline"}
                     onClick={() => setViewMode("list")}
+                    className={viewMode === "list" ? "bg-blue-600 hover:bg-blue-700" : ""}
                   >
                     <List className="w-4 h-4" />
                   </Button>
@@ -239,7 +398,7 @@ export function BlockLibrary() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as "name" | "popularity")}
-                  className="text-xs border rounded px-2 py-1"
+                  className="text-xs border border-gray-200 rounded-md px-3 py-1 bg-white/70 backdrop-blur-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="popularity">Sort by Popularity</option>
                   <option value="name">Sort by Name</option>
@@ -249,22 +408,34 @@ export function BlockLibrary() {
 
             {/* Categories */}
             <div className="space-y-3">
-              {Object.entries(filteredCategories).map(([category, categoryData]) => {
+              {Object.entries(filteredAndSortedBlocks).map(([category, categoryData]) => {
                 const Icon = categoryData.icon
                 const isExpanded = expandedCategories.has(category)
 
                 return (
                   <Collapsible key={category} open={isExpanded} onOpenChange={() => toggleCategory(category)}>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="w-full justify-between p-2 h-auto hover:bg-gray-50">
-                        <div className="flex items-center space-x-2">
-                          <Icon className={`w-4 h-4 text-${categoryData.color}-600`} />
+                      <Button 
+                        variant="ghost" 
+                        className="w-full justify-between p-3 h-auto hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 hover:border-blue-100 rounded-lg transition-all duration-200"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={`p-2 rounded-lg bg-${categoryData.color}-100`}>
+                            <Icon className={`w-4 h-4 text-${categoryData.color}-600`} />
+                          </div>
                           <span className="font-medium text-sm">{category}</span>
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge 
+                            variant="secondary" 
+                            className={`text-xs bg-${categoryData.color}-50 text-${categoryData.color}-700 border-${categoryData.color}-200`}
+                          >
                             {categoryData.blocks.length}
                           </Badge>
                         </div>
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-gray-400" />
+                        )}
                       </Button>
                     </CollapsibleTrigger>
 
@@ -335,6 +506,11 @@ export function BlockLibrary() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Quick Start Section */}
+      <div className="p-4 bg-white rounded-lg shadow-md mt-4">
+        <QuickStart />
+      </div>
     </div>
   )
 }

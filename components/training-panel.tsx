@@ -111,7 +111,7 @@ export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: T
         (metrics: TrainingMetrics) => {
           setCurrentEpoch(metrics.epoch)
           setCurrentMetrics(metrics)
-          setTrainingData((prev) => [...prev, metrics])
+          setTrainingData((prev: TrainingMetrics[]) => [...prev, metrics])
         },
         (history: TrainingMetrics[]) => {
           console.log("Training completed!", history)
@@ -126,6 +126,7 @@ export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: T
   }
 
   const handleStopTraining = () => {
+    webgpuRuntime.stopTraining()
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }

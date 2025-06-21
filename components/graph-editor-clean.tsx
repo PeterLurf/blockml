@@ -91,19 +91,13 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
   // Pan and Zoom State
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [isPanning, setIsPanning] = useState(false)
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [spacePressed, setSpacePressed] = useState(false)
 
   // Node and Connection State
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [draggedNode, setDraggedNode] = useState<string | null>(null)
-  const [nodeDragStart, setNodeDragStart] = useState<{
-    mouseX: number
-    mouseY: number
-    nodeX: number
-    nodeY: number
-  } | null>(null)
   const [connecting, setConnecting] = useState<{
     nodeId: string
     handle: string
@@ -120,7 +114,6 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
     type: "input" | "output"
   } | null>(null)
   const [compatiblePorts, setCompatiblePorts] = useState<Set<string>>(new Set())
-  const [isDragOverCanvas, setIsDragOverCanvas] = useState(false)
 
   // Store
   const { nodes, edges: connections, setNodes, addNode, removeNode, setConnections: setStoreConnections } = useBlockMLStore()
@@ -224,27 +217,26 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault()
-      e.stopPropagation()
-      
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
 
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
       
-      // Calculate zoom factor
-      const zoomFactor = e.deltaY > 0 ? (1 - PAN_ZOOM_CONFIG.baseZoomIntensity) : (1 + PAN_ZOOM_CONFIG.baseZoomIntensity)
+      // More granular zoom control with variable sensitivity based on zoom level
+      const currentZoomFactor = zoom < 1 ? 1.5 : zoom > 2 ? 0.7 : 1
+      const zoomIntensity = PAN_ZOOM_CONFIG.baseZoomIntensity * currentZoomFactor
+      
+      const zoomFactor = e.deltaY > 0 ? (1 - zoomIntensity) : (1 + zoomIntensity)
       const newZoom = Math.min(Math.max(zoom * zoomFactor, ZOOM_LIMITS.min), ZOOM_LIMITS.max)
       
-      if (newZoom !== zoom) {
-        // Calculate new pan to zoom towards mouse position
-        const zoomRatio = newZoom / zoom
-        const newPanX = mouseX - (mouseX - pan.x) * zoomRatio
-        const newPanY = mouseY - (mouseY - pan.y) * zoomRatio
-        
-        setZoom(newZoom)
-        setPan({ x: newPanX, y: newPanY })
-      }
+      // Zoom towards mouse position with improved precision
+      const zoomRatio = newZoom / zoom
+      setZoom(newZoom)
+      setPan({
+        x: mouseX - (mouseX - pan.x) * zoomRatio,
+        y: mouseY - (mouseY - pan.y) * zoomRatio,
+      })
     },
     [zoom, pan],
   )
@@ -280,20 +272,17 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
   // Canvas Event Handlers
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      const target = e.target as HTMLElement
-
-      // Pan with middle mouse button or space+left click
-      if ((e.button === 1 || (e.button === 0 && spacePressed)) && !connecting) {
-        setIsPanning(true)
-        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
-        e.preventDefault()
-        e.stopPropagation()
-        return
-      }
-
-      // Deselect node if clicking on the background
-      if (e.button === 0 && !target.closest("[data-node-id], [data-port]")) {
+      // Pan with middle mouse button (button 1), left mouse button on empty canvas, or space+left click
+      if (
+        (e.button === 1 || 
+         (e.button === 0 && (e.target === canvasRef.current || e.target === svgRef.current)) ||
+         (e.button === 0 && spacePressed)) &&
+        !connecting
+      ) {
+        setIsDragging(true)
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
         setSelectedNode(null)
+        e.preventDefault()
       }
     },
     [pan, connecting, spacePressed],
@@ -307,135 +296,27 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
     // This is handled by the global mouse up listener
   }, [])
 
-  // Global Mouse Event Handlers for panning, node dragging, etc.
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
+  // Drag and Drop Handlers
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault()
+      const canvasBounds = canvasRef.current?.getBoundingClientRect()
+      const blockType = event.dataTransfer.getData("application/blockml")
 
-      animationFrameRef.current = requestAnimationFrame(() => {
-        // Update mouse position for the connection line
-        const canvasBounds = canvasRef.current?.getBoundingClientRect()
-        if (canvasBounds) {
-          const newMousePos = {
-            x: (e.clientX - canvasBounds.left),
-            y: (e.clientY - canvasBounds.top),
-          }
-          // We'll use raw client coordinates for the connection line now
-          setMousePosition(newMousePos)
-        }
-        
-        // Handle canvas panning (remains the same)
-        if (isPanning) {
-          const newPanX = e.clientX - panStart.x
-          const newPanY = e.clientY - panStart.y
-          setPan({
-            x: newPanX,
-            y: newPanY,
-          })
-        }
+      if (!blockType || !canvasBounds) return
 
-        // Handle node dragging (remains the same)
-        if (draggedNode && nodeDragStart) {
-          const deltaX = (e.clientX - nodeDragStart.mouseX) / zoom
-          const deltaY = (e.clientY - nodeDragStart.mouseY) / zoom
-
-          setNodes(
-            nodes.map((node) =>
-              node.id === draggedNode
-                ? {
-                    ...node,
-                    position: {
-                      x: nodeDragStart.nodeX + deltaX,
-                      y: nodeDragStart.nodeY + deltaY,
-                    },
-                  }
-                : node,
-            ),
-          )
-        }
-      })
-    }
-
-    const handleMouseUp = () => {
-      // Cancel any pending animation frame
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
-
-      if (connecting) {
-        setConnecting(null)
-        setCompatiblePorts(new Set())
-      }
-      setIsPanning(false)
-      setDraggedNode(null)
-      setNodeDragStart(null)
-    }
-
-    document.addEventListener("mousemove", handleMouseMove)
-    document.addEventListener("mouseup", handleMouseUp)
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
-
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
-    }
-  }, [connecting, pan, zoom, isPanning, draggedNode, nodeDragStart, nodes, setNodes])
-
-  // NEW: Rewritten drag-and-drop logic using direct event listeners
-  useEffect(() => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl) return;
-
-    const handleDragOver = (event: DragEvent) => {
-      event.preventDefault(); // This is crucial to allow dropping
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'copy';
-      }
-      setIsDragOverCanvas(true);
-    };
-
-    const handleDragLeave = (event: DragEvent) => {
-      event.preventDefault();
-      setIsDragOverCanvas(false);
-    };
-
-    const handleDrop = (event: DragEvent) => {
-      event.preventDefault();
-      setIsDragOverCanvas(false);
-
-      if (!event.dataTransfer) return;
-
-      const blockType = event.dataTransfer.getData('text/plain');
-      const canvasBounds = canvasEl.getBoundingClientRect();
-
-      if (!blockType || !canvasBounds) {
-        console.error("Drop failed: Missing data.", { blockType, canvasBounds });
-        return;
-      }
-      
       const position = {
         x: (event.clientX - canvasBounds.left - pan.x) / zoom,
         y: (event.clientY - canvasBounds.top - pan.y) / zoom,
-      };
-
-      const blockDef = BLOCK_DEFINITIONS[blockType];
-      if (!blockDef) {
-        console.error(`Block definition not found for type: ${blockType}`);
-        return;
       }
-      
+
+      const blockDef = BLOCK_DEFINITIONS[blockType]
+      if (!blockDef) return
+
       const newNode: BlockNode = {
         id: `${blockType}-${Date.now()}`,
-        type: 'mlBlock',
-        position: {
-            x: position.x - BLOCK_DIMENSIONS.width / 2,
-            y: position.y - BLOCK_DIMENSIONS.headerHeight / 2,
-        },
+        type: "mlBlock",
+        position,
         data: {
           blockType,
           label: blockType,
@@ -443,42 +324,28 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
           outputs: blockDef.outputs.map((output) => output.name),
           parameters: { ...blockDef.parameters },
         },
-      };
+      }
 
-      addNode(newNode);
-    };
-
-    canvasEl.addEventListener('dragover', handleDragOver);
-    canvasEl.addEventListener('dragleave', handleDragLeave);
-    canvasEl.addEventListener('drop', handleDrop);
-
-    return () => {
-      canvasEl.removeEventListener('dragover', handleDragOver);
-      canvasEl.removeEventListener('dragleave', handleDragLeave);
-      canvasEl.removeEventListener('drop', handleDrop);
-    };
-  }, [pan, zoom, addNode, nodes]);
-
-  // RESTORED: All other event handlers for nodes, ports, and connections
-  const handleNodeMouseDown = useCallback(
-    (nodeId: string, e: React.MouseEvent) => {
-      e.stopPropagation()
-      if (e.button !== 0) return
-
-      const node = nodes.find((n) => n.id === nodeId)
-      if (!node) return
-
-      setSelectedNode(nodeId)
-      setDraggedNode(nodeId)
-      setNodeDragStart({
-        mouseX: e.clientX,
-        mouseY: e.clientY,
-        nodeX: node.position.x,
-        nodeY: node.position.y,
-      })
+      addNode(newNode)
     },
-    [nodes],
+    [pan, zoom, addNode],
   )
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+  }, [])
+
+  // Node Event Handlers
+  const handleNodeMouseDown = useCallback((nodeId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedNode(nodeId)
+    setDraggedNode(nodeId)
+    setDragStart({
+      x: e.clientX,
+      y: e.clientY,
+    })
+  }, [])
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
@@ -495,6 +362,7 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
     [connections, setStoreConnections],
   )
 
+  // Port Event Handlers
   const handlePortMouseDown = useCallback(
     (nodeId: string, handle: string, type: "input" | "output", e: React.MouseEvent) => {
       e.stopPropagation()
@@ -503,7 +371,10 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
       const node = nodes.find((n) => n.id === nodeId)
       if (!node) return
 
+      // Get the actual screen position of the port
       const screenPos = getPortScreenPosition(node, handle, type)
+
+      // Convert back to canvas coordinates for consistency
       const startPosition = {
         x: (screenPos.x - pan.x) / zoom,
         y: (screenPos.y - pan.y) / zoom,
@@ -512,6 +383,8 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
       setConnecting({ nodeId, handle, type, startPosition })
       const compatible = findCompatiblePorts(nodeId, handle, type)
       setCompatiblePorts(compatible)
+
+      console.log("Starting connection:", { nodeId, handle, type, screenPos, startPosition })
     },
     [nodes, findCompatiblePorts, zoom, pan, getPortScreenPosition],
   )
@@ -528,7 +401,8 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         if (sourceNode && targetNode) {
           const sourcePort = connecting.type === "output" ? connecting.handle : handle
           const targetPort = connecting.type === "input" ? connecting.handle : handle
-          
+
+          // Check if connection already exists
           const existingConnection = connections.find(
             (conn) =>
               conn.source === sourceNode.id &&
@@ -549,7 +423,14 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
               isValid: validation.isValid,
               validationError: validation.error,
             }
+
             setStoreConnections([...connections, newConnection])
+            console.log("Connection created:", newConnection)
+            console.log("Total connections now:", connections.length + 1)
+
+            setTimeout(() => validateAllConnections(), 100)
+          } else {
+            console.log("Connection already exists, not creating duplicate")
           }
         }
       }
@@ -557,7 +438,7 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
       setConnecting(null)
       setCompatiblePorts(new Set())
     },
-    [connecting, nodes, connections, setStoreConnections],
+    [connecting, nodes, connections, validateAllConnections, setStoreConnections],
   )
 
   const handlePortHover = useCallback((nodeId: string, port: string, type: "input" | "output") => {
@@ -598,51 +479,94 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
       }
     }
 
-    // Global wheel event for canvas
-    const handleGlobalWheel = (e: WheelEvent) => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      
-      const rect = canvas.getBoundingClientRect()
-      const isOverCanvas = 
-        e.clientX >= rect.left && 
-        e.clientX <= rect.right && 
-        e.clientY >= rect.top && 
-        e.clientY <= rect.bottom
-      
-      if (isOverCanvas) {
-        e.preventDefault()
-        e.stopPropagation()
-        
-        const mouseX = e.clientX - rect.left
-        const mouseY = e.clientY - rect.top
-        
-        // Calculate zoom factor
-        const zoomFactor = e.deltaY > 0 ? (1 - PAN_ZOOM_CONFIG.baseZoomIntensity) : (1 + PAN_ZOOM_CONFIG.baseZoomIntensity)
-        const newZoom = Math.min(Math.max(zoom * zoomFactor, ZOOM_LIMITS.min), ZOOM_LIMITS.max)
-        
-        if (newZoom !== zoom) {
-          // Calculate new pan to zoom towards mouse position
-          const zoomRatio = newZoom / zoom
-          const newPanX = mouseX - (mouseX - pan.x) * zoomRatio
-          const newPanY = mouseY - (mouseY - pan.y) * zoomRatio
-          
-          setZoom(newZoom)
-          setPan({ x: newPanX, y: newPanY })
-        }
-      }
-    }
-
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('keyup', handleKeyUp)
-    document.addEventListener('wheel', handleGlobalWheel, { passive: false })
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
-      document.removeEventListener('wheel', handleGlobalWheel)
     }
-  }, [zoom, pan])
+  }, [])
+
+  // Global Mouse Event Handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Cancel previous animation frame if still pending
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+
+      // Use requestAnimationFrame for smooth performance
+      animationFrameRef.current = requestAnimationFrame(() => {
+        const canvasBounds = canvasRef.current?.getBoundingClientRect()
+        if (canvasBounds) {
+          setMousePosition({
+            x: (e.clientX - canvasBounds.left - pan.x) / zoom,
+            y: (e.clientY - canvasBounds.top - pan.y) / zoom,
+          })
+        }
+
+        // Handle canvas panning with improved smoothness
+        if (isDragging && !draggedNode && !connecting) {
+          const newPanX = e.clientX - dragStart.x
+          const newPanY = e.clientY - dragStart.y
+          setPan({
+            x: newPanX,
+            y: newPanY,
+          })
+        }
+
+        // Handle node dragging with better precision
+        if (draggedNode) {
+          const deltaX = (e.clientX - dragStart.x) / zoom
+          const deltaY = (e.clientY - dragStart.y) / zoom
+
+          setNodes(
+            nodes.map((node) =>
+              node.id === draggedNode
+                ? {
+                    ...node,
+                    position: {
+                      x: node.position.x + deltaX,
+                      y: node.position.y + deltaY,
+                    },
+                  }
+                : node,
+            ),
+          )
+
+          setDragStart({ x: e.clientX, y: e.clientY })
+        }
+      })
+    }
+
+    const handleMouseUp = () => {
+      // Cancel any pending animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+
+      if (connecting) {
+        setConnecting(null)
+        setCompatiblePorts(new Set())
+      }
+      setIsDragging(false)
+      setDraggedNode(null)
+    }
+
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+      
+      // Clean up animation frame on unmount
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [connecting, pan, zoom, isDragging, draggedNode, dragStart, nodes, setNodes])
 
   return (
     <div className="w-full h-full relative bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 overflow-hidden">
@@ -799,46 +723,25 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         </div>
       </div>
 
-      {/* Drag and Drop Visual Indicator */}
-      {isDragOverCanvas && (
-        <div
-          className="absolute pointer-events-none z-20 border-2 border-dashed border-blue-400 bg-blue-50/30 rounded-lg"
-          style={{
-            width: `${BLOCK_DIMENSIONS.width * zoom}px`,
-            height: `${(BLOCK_DIMENSIONS.headerHeight + 4 * BLOCK_DIMENSIONS.portHeight) * zoom}px`,
-            transform: `translate(${
-              mousePosition.x * zoom + pan.x - (BLOCK_DIMENSIONS.width * zoom) / 2
-            }px, ${
-              mousePosition.y * zoom + pan.y -
-              ((BLOCK_DIMENSIONS.headerHeight + 4 * BLOCK_DIMENSIONS.portHeight) * zoom) / 2
-            }px)`,
-            transition: "transform 0.1s ease-out",
-          }}
-        >
-          <div className="absolute inset-0 flex items-start justify-center pt-2">
-            <div className="text-blue-600 text-xs font-medium bg-white/80 px-2 py-1 rounded shadow">
-              Drop here
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Canvas */}
       <div
         ref={canvasRef}
-        data-canvas="true"
-        className={`w-full h-full canvas-background ${
-          isPanning
-            ? "cursor-grabbing"
-            : connecting
-            ? "cursor-crosshair"
+        className={`w-full h-full ${
+          isDragging 
+            ? 'cursor-grabbing' 
+            : connecting 
+            ? 'cursor-crosshair' 
             : spacePressed
-            ? "cursor-grab"
-            : "cursor-default"
-        } ${isDragOverCanvas ? "ring-4 ring-blue-400 ring-opacity-50" : ""}`}
+            ? 'cursor-grab'
+            : 'cursor-default'
+        }`}
         onMouseDown={handleCanvasMouseDown}
+        onMouseMove={handleCanvasMouseMove}
+        onMouseUp={handleCanvasMouseUp}
         onWheel={handleWheel}
-        onContextMenu={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onContextMenu={(e) => e.preventDefault()} // Prevent right-click menu
         style={{
           backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
           backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
@@ -905,20 +808,27 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
 
           {/* Active connection being drawn */}
           {connecting && (
-            <path
-              d={getSplinePath(
-                {
-                  x: connecting.startPosition.x * zoom + pan.x,
-                  y: connecting.startPosition.y * zoom + pan.y,
-                },
-                mousePosition,
-              )}
-              stroke="#2563eb"
-              strokeWidth="4"
-              fill="none"
-              strokeLinecap="round"
-              style={{ pointerEvents: 'none' }}
-            />
+            <>
+              <path
+                d={getSplinePath(
+                  {
+                    x: connecting.startPosition.x * zoom + pan.x,
+                    y: connecting.startPosition.y * zoom + pan.y,
+                  },
+                  {
+                    x: mousePosition.x * zoom + pan.x,
+                    y: mousePosition.y * zoom + pan.y,
+                  },
+                )}
+                stroke="#d1d5db"
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray="6,6"
+                opacity="0.8"
+                style={{ pointerEvents: 'none' }}
+              />
+            </>
           )}
 
           <defs>
@@ -946,7 +856,6 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
               transform: `translate(${node.position.x * zoom + pan.x}px, ${node.position.y * zoom + pan.y}px) scale(${zoom})`,
               transformOrigin: "top left",
               zIndex: selectedNode === node.id ? 10 : 2,
-              pointerEvents: isDragOverCanvas ? 'none' : 'auto',
             }}
           >
             <MLBlockNode
@@ -966,13 +875,17 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         ))}
 
         {/* Empty state */}
-        {nodes.length === 0 && !isDragOverCanvas && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-gray-500">
               <h3 className="text-lg font-medium mb-2">Start Building Your Model</h3>
               <p className="text-sm">Drag blocks from the library or choose a template</p>
-              <p className="text-xs mt-2 text-gray-400">Click and drag from output ports (right) to input ports (left)</p>
-              <p className="text-xs mt-1 text-gray-400">Click on connections to delete them</p>
+              <p className="text-xs mt-2 text-gray-400">
+                Click and drag from output ports (right) to input ports (left)
+              </p>
+              <p className="text-xs mt-1 text-gray-400">
+                Click on connections to delete them
+              </p>
             </div>
           </div>
         )}
@@ -1044,13 +957,12 @@ function MLBlockNode({
     return PORT_TYPE_COLORS[portDef.shape.dtype] || "bg-gray-500 hover:bg-gray-600 shadow-md"
   }, [node.data.blockType])
 
-  return (    <Card
+  return (
+    <Card
       ref={nodeRef}
-      data-node-id={node.id}
-      className={`w-56 cursor-move ml-block-node ${getBlockColor(node.data.blockType)} ${
+      className={`w-56 cursor-move ${getBlockColor(node.data.blockType)} ${
         isSelected ? "ring-2 ring-blue-400 shadow-xl" : "shadow-lg"
       } ${isTraining ? "opacity-75" : ""} transition-all duration-300 hover:shadow-xl hover:scale-[1.02] backdrop-blur-sm bg-opacity-90 border-0`}
-      style={{ pointerEvents: 'auto' }}
       onMouseDown={onMouseDown}
     >
       <div className="p-4">
@@ -1088,14 +1000,14 @@ function MLBlockNode({
             const isConnecting = connecting !== null
 
             return (
-              <div key={input} className="flex items-center relative">                <div
+              <div key={input} className="flex items-center relative">
+                <div
                   className={`w-4 h-4 rounded-full cursor-pointer border-2 border-white shadow-sm transition-all duration-200 ${getPortColor(
                     input,
                     "input",
                     isConnecting,
                     isCompatible,
                   )} hover:scale-125 hover:shadow-md`}
-                  data-port="input"
                   onMouseDown={(e) => onPortMouseDown(node.id, input, "input", e)}
                   onMouseUp={(e) => onPortMouseUp(node.id, input, "input", e)}
                   onMouseEnter={() => onPortHover(node.id, input, "input")}
@@ -1132,14 +1044,14 @@ function MLBlockNode({
                     ✓
                   </Badge>
                 )}
-                <span className="text-xs text-gray-700 mr-4 font-medium select-none">{output}</span>                <div
+                <span className="text-xs text-gray-700 mr-4 font-medium select-none">{output}</span>
+                <div
                   className={`w-4 h-4 rounded-full cursor-pointer border-2 border-white shadow-sm transition-all duration-200 ${getPortColor(
                     output,
                     "output",
                     isConnecting,
                     isCompatible,
                   )} hover:scale-125 hover:shadow-md`}
-                  data-port="output"
                   onMouseDown={(e) => onPortMouseDown(node.id, output, "output", e)}
                   onMouseUp={(e) => onPortMouseUp(node.id, output, "output", e)}
                   onMouseEnter={() => onPortHover(node.id, output, "output")}

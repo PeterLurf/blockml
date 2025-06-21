@@ -334,6 +334,44 @@ export const BLOCK_DEFINITIONS: Record<string, BlockDefinition> = {
     ],
     parameters: {},
   },
+
+  SGD: {
+    type: "SGD",
+    inputs: [
+      {
+        name: "gradients",
+        shape: { dimensions: [-1], dtype: "float32" },
+        description: "Model gradients",
+      },
+    ],
+    outputs: [
+      {
+        name: "updates",
+        shape: { dimensions: [-1], dtype: "float32" },
+        description: "Parameter updates",
+      },
+    ],
+    parameters: { learning_rate: 0.01, momentum: 0.0 },
+  },
+
+  Adam: {
+    type: "Adam",
+    inputs: [
+      {
+        name: "gradients",
+        shape: { dimensions: [-1], dtype: "float32" },
+        description: "Model gradients",
+      },
+    ],
+    outputs: [
+      {
+        name: "updates",
+        shape: { dimensions: [-1], dtype: "float32" },
+        description: "Parameter updates",
+      },
+    ],
+    parameters: { learning_rate: 0.001, beta1: 0.9, beta2: 0.999, epsilon: 1e-7 },
+  },
 }
 
 export interface ValidationResult {
