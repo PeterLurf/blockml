@@ -45,29 +45,29 @@ interface BlockMLState {
   loadProject: () => void
 }
 
-export const useBlockMLStore = create<BlockMLState>((set, get) => ({
+export const useBlockMLStore = create((set: any, get: any) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
 
-  setNodes: (nodes) => set({ nodes }),
-  setEdges: (edges) => set({ edges }),
-  setConnections: (connections) => set({ edges: connections }),
+  setNodes: (nodes: BlockNode[]) => set({ nodes }),
+  setEdges: (edges: Connection[]) => set({ edges }),
+  setConnections: (connections: Connection[]) => set({ edges: connections }),
 
-  addNode: (node) => set((state) => ({ nodes: [...state.nodes, node] })),
+  addNode: (node: BlockNode) => set((state: BlockMLState) => ({ nodes: [...state.nodes, node] })),
 
-  removeNode: (nodeId) =>
-    set((state) => ({
+  removeNode: (nodeId: string) =>
+    set((state: BlockMLState) => ({
       nodes: state.nodes.filter((n) => n.id !== nodeId),
       edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
     })),
 
-  updateNode: (nodeId, data) =>
-    set((state) => ({
+  updateNode: (nodeId: string, data: any) =>
+    set((state: BlockMLState) => ({
       nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node)),
     })),
 
-  setSelectedNode: (id) => set({ selectedNodeId: id }),
+  setSelectedNode: (id: string | null) => set({ selectedNodeId: id }),
 
   saveProject: () => {
     const { nodes, edges } = get()
