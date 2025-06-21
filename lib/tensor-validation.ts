@@ -35,7 +35,7 @@ export const BLOCK_DEFINITIONS: Record<string, BlockDefinition> = {
         description: "Training labels",
       },
     ],
-    parameters: { batch_size: 32, shuffle: true },
+    parameters: { batch_size: 32, shuffle: true, dataset: "mnist" },
   },
 
   Dense: {

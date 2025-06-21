@@ -31,7 +31,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
           label: "DataLoader",
           inputs: [],
           outputs: ["data", "labels"],
-          parameters: { batch_size: 32, shuffle: true },
+          parameters: { batch_size: 32, shuffle: true, dataset: "iris" },
         },
       },
       {
@@ -122,7 +122,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
           label: "MNIST Data",
           inputs: [],
           outputs: ["data", "labels"],
-          parameters: { batch_size: 64, shuffle: true },
+          parameters: { batch_size: 64, shuffle: true, dataset: "mnist" },
         },
       },
       {
@@ -251,7 +251,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
           label: "Input",
           inputs: [],
           outputs: ["data", "labels"],
-          parameters: { batch_size: 32 },
+          parameters: { batch_size: 32, dataset: "cifar10" },
         },
       },
       {
@@ -329,7 +329,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
           label: "Sequence Input",
           inputs: [],
           outputs: ["data", "labels"],
-          parameters: { batch_size: 16, sequence_length: 128 },
+          parameters: { batch_size: 16, sequence_length: 128, dataset: "text" },
         },
       },
       {

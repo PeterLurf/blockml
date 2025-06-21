@@ -101,7 +101,7 @@ const quickStartTemplates = {
           label: "Data Input",
           inputs: [],
           outputs: ["data"],
-          parameters: { inputShape: [28, 28, 1], batchSize: 32 },
+          parameters: { inputShape: [28, 28, 1], batchSize: 32, dataset: "mnist" },
         },
       },
       {
