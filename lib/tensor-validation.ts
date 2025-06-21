@@ -436,7 +436,7 @@ export class TensorValidator {
 
     return {
       isValid: true,
-      inferredShape: this.inferOutputShape(sourceBlock, sourcePort),
+      inferredShape: this.inferOutputShape(sourceBlock, sourcePort) ?? undefined,
     }
   }
 
@@ -523,11 +523,13 @@ export class TensorValidator {
       case "MaxPooling2D":
         if (inferredShape.dimensions.length === 4) {
           const poolSize = block.data.parameters.pool_size || 2
-          if (inferredShape.dimensions[1] !== -1) {
-            inferredShape.dimensions[1] = Math.floor(inferredShape.dimensions[1] / poolSize)
+          const dim1 = inferredShape.dimensions[1]
+          if (dim1 != null && dim1 !== -1) {
+            inferredShape.dimensions[1] = Math.floor(dim1 / poolSize)
           }
-          if (inferredShape.dimensions[2] !== -1) {
-            inferredShape.dimensions[2] = Math.floor(inferredShape.dimensions[2] / poolSize)
+          const dim2 = inferredShape.dimensions[2]
+          if (dim2 != null && dim2 !== -1) {
+            inferredShape.dimensions[2] = Math.floor(dim2 / poolSize)
           }
         }
         break

@@ -3,8 +3,9 @@
 // the project can compile even when the packages are not installed.
 
 declare module "next-themes" {
-  const anything: any
-  export = anything
+  export const ThemeProvider: any
+  export type ThemeProviderProps = any
+  export const useTheme: any
 }
 
 declare module "@radix-ui/react-aspect-ratio" {
@@ -48,26 +49,38 @@ declare module "@radix-ui/react-toggle" {
 }
 
 declare module "react-day-picker" {
-  const anything: any
-  export = anything
+  export const DayPicker: any
 }
 
 declare module "embla-carousel-react" {
-  const anything: any
-  export = anything
+  const useEmblaCarousel: any
+  export default useEmblaCarousel
+  export type UseEmblaCarouselType = any
 }
 
 declare module "cmdk" {
-  const anything: any
-  export = anything
+  export const Command: any
 }
 
 declare module "vaul" {
-  const anything: any
-  export = anything
+  export const Drawer: any
 }
 
 declare module "sonner" {
-  const anything: any
-  export = anything
-} 
+  export const Toaster: any
+}
+
+declare module "react-hook-form" {
+  export const Controller: any
+  export type ControllerProps<T extends any = any, U extends any = any> = any
+  export type FieldPath<T extends any = any> = any
+  export type FieldValues = any
+  export const FormProvider: any
+  export const useFormContext: any
+}
+
+declare module "react-resizable-panels" {
+  export const PanelGroup: any
+  export const Panel: any
+  export const PanelResizeHandle: any
+}
