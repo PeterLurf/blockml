@@ -103,10 +103,6 @@ declare module "react-resizable-panels" {
   export const PanelResizeHandle: any
 }
 
-declare module "react" {
-  const anything: any
-  export = anything
-}
 
 declare module "class-variance-authority" {
   export const cva: any
@@ -120,6 +116,63 @@ declare module "@radix-ui/react-tooltip" {
 
 declare module "zustand" {
   export const create: any
+}
+
+// match any Radix UI package so that generated components compile
+declare module "@radix-ui/*" {
+  const anything: any
+  export = anything
+}
+
+// lucide-react exports many icon components used throughout the app
+declare module "lucide-react" {
+  export const AlertCircle: any
+  export const AlertTriangle: any
+  export const ArrowLeft: any
+  export const ArrowRight: any
+  export const BarChart3: any
+  export const Bot: any
+  export const Brain: any
+  export const Check: any
+  export const CheckCircle: any
+  export const ChevronDown: any
+  export const ChevronLeft: any
+  export const ChevronRight: any
+  export const ChevronUp: any
+  export const Circle: any
+  export const Copy: any
+  export const Cpu: any
+  export const Dot: any
+  export const Download: any
+  export const Eye: any
+  export const FileText: any
+  export const FolderOpen: any
+  export const GripVertical: any
+  export const Info: any
+  export const Layers: any
+  export const Maximize: any
+  export const MoreHorizontal: any
+  export const Move: any
+  export const PanelLeft: any
+  export const Play: any
+  export const Save: any
+  export const Search: any
+  export const Send: any
+  export const Settings: any
+  export const Database: any
+  export const Target: any
+  export const Star: any
+  export const Grid: any
+  export const List: any
+  export const Plus: any
+  export const Sparkles: any
+  export const Square: any
+  export const Trash2: any
+  export const User: any
+  export const X: any
+  export const Zap: any
+  export const ZoomIn: any
+  export const ZoomOut: any
 }
 
 declare namespace JSX {
