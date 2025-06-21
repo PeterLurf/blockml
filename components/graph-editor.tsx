@@ -386,38 +386,33 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
     }
   }, [connecting, pan, zoom, isPanning, draggedNode, nodeDragStart, nodes, setNodes])
 
-  // NEW: Rewritten drag-and-drop logic using direct event listeners
-  useEffect(() => {
-    const canvasEl = canvasRef.current;
-    if (!canvasEl) return;
+  // Drag and Drop Handlers
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    setIsDragOverCanvas(true);
+  }, []);
 
-    const handleDragOver = (event: DragEvent) => {
-      event.preventDefault(); // This is crucial to allow dropping
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'copy';
-      }
-      setIsDragOverCanvas(true);
-    };
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragOverCanvas(false);
+  }, []);
 
-    const handleDragLeave = (event: DragEvent) => {
-      event.preventDefault();
-      setIsDragOverCanvas(false);
-    };
-
-    const handleDrop = (event: DragEvent) => {
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
       event.preventDefault();
       setIsDragOverCanvas(false);
 
-      if (!event.dataTransfer) return;
-
-      const blockType = event.dataTransfer.getData('text/plain');
-      const canvasBounds = canvasEl.getBoundingClientRect();
+      const canvasBounds = canvasRef.current?.getBoundingClientRect();
+      const blockType = event.dataTransfer.getData('application/blockml');
 
       if (!blockType || !canvasBounds) {
-        console.error("Drop failed: Missing data.", { blockType, canvasBounds });
+        console.error('Drop failed: Missing data.', { blockType, canvasBounds });
         return;
       }
-      
+
       const position = {
         x: (event.clientX - canvasBounds.left - pan.x) / zoom,
         y: (event.clientY - canvasBounds.top - pan.y) / zoom,
@@ -428,13 +423,13 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         console.error(`Block definition not found for type: ${blockType}`);
         return;
       }
-      
+
       const newNode: BlockNode = {
         id: `${blockType}-${Date.now()}`,
         type: 'mlBlock',
         position: {
-            x: position.x - BLOCK_DIMENSIONS.width / 2,
-            y: position.y - BLOCK_DIMENSIONS.headerHeight / 2,
+          x: position.x - BLOCK_DIMENSIONS.width / 2,
+          y: position.y - BLOCK_DIMENSIONS.headerHeight / 2,
         },
         data: {
           blockType,
@@ -446,18 +441,9 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
       };
 
       addNode(newNode);
-    };
-
-    canvasEl.addEventListener('dragover', handleDragOver);
-    canvasEl.addEventListener('dragleave', handleDragLeave);
-    canvasEl.addEventListener('drop', handleDrop);
-
-    return () => {
-      canvasEl.removeEventListener('dragover', handleDragOver);
-      canvasEl.removeEventListener('dragleave', handleDragLeave);
-      canvasEl.removeEventListener('drop', handleDrop);
-    };
-  }, [pan, zoom, addNode, nodes]);
+    },
+    [pan, zoom, addNode]
+  );
 
   // RESTORED: All other event handlers for nodes, ports, and connections
   const handleNodeMouseDown = useCallback(
@@ -839,6 +825,9 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         onMouseDown={handleCanvasMouseDown}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         style={{
           backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
           backgroundSize: `${20 * zoom}px ${20 * zoom}px`,

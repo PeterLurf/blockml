@@ -177,7 +177,7 @@ export function BlockLibrary() {
   const dragImageRef = useRef<HTMLDivElement | null>(null)
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
-    event.dataTransfer.setData("text/plain", nodeType)
+    event.dataTransfer.setData("application/blockml", nodeType)
     event.dataTransfer.effectAllowed = "copy"
 
     if (dragImageRef.current) {
