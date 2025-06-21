@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useState } from "react"
+import { memo, useState, useEffect } from "react"
 import { Handle, Position, type NodeProps } from "reactflow"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Settings, Info } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useBlockMLStore } from "@/lib/store"
+import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { BLOCK_DEFINITIONS } from "@/lib/tensor-validation"
 
 interface MLBlockData {
   blockType: string
@@ -17,9 +27,26 @@ interface MLBlockData {
   parameters: Record<string, any>
 }
 
-export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => {
-  const [parameters, setParameters] = useState(data.parameters)
+export const MLBlockNode = memo(({ id, data, selected }: NodeProps<MLBlockData>) => {
+  const defaultParams = BLOCK_DEFINITIONS[data.blockType]?.parameters || {}
+  const initialParams = data.parameters && Object.keys(data.parameters).length > 0 ? data.parameters : defaultParams
+
+  const [parameters, setParameters] = useState<Record<string, any>>(initialParams)
   const [showTooltip, setShowTooltip] = useState(false)
+
+  const { updateNode, setSelectedNode } = useBlockMLStore()
+
+  // Ensure the node always carries at least the default parameters and sync local state
+  useEffect(() => {
+    const currentParams = data.parameters && Object.keys(data.parameters).length > 0 ? data.parameters : defaultParams
+
+    // Seed missing parameters into the graph store so other panels stay in sync
+    if (!data.parameters || Object.keys(data.parameters).length === 0) {
+      updateNode(id, { parameters: { ...defaultParams } })
+    }
+
+    setParameters(currentParams)
+  }, [data.parameters, defaultParams, id, updateNode])
 
   const getBlockColor = (blockType: string) => {
     const colorMap: Record<string, string> = {
@@ -38,12 +65,32 @@ export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => 
     return colorMap[blockType] || "bg-gray-100 border-gray-300"
   }
 
-  const updateParameter = (key: string, value: any) => {
-    setParameters((prev) => ({ ...prev, [key]: value }))
+  const updateParameter = (key: string, rawValue: any) => {
+    let parsedValue: any = rawValue
+
+    if (typeof rawValue === "string") {
+      parsedValue = rawValue === "" ? "" : isNaN(Number(rawValue)) ? rawValue : Number(rawValue)
+    }
+
+    // 1. Local UI update for immediate feedback.
+    setParameters((prev) => ({ ...prev, [key]: parsedValue }))
+
+    // 2. Persist the change in the global graph store so every panel stays in sync.
+    updateNode(id, {
+      parameters: {
+        ...(data.parameters || {}),
+        [key]: parsedValue,
+      },
+    })
   }
 
   return (
-    <Card className={`min-w-[200px] ${getBlockColor(data.blockType)} ${selected ? "ring-2 ring-blue-500" : ""}`}>
+    <Card
+      onClick={() => setSelectedNode(id)}
+      className={`w-[220px] shadow-lg rounded-xl border-2 ${getBlockColor(data.blockType)} ${
+        selected ? "ring-2 ring-blue-500" : ""
+      }`}
+    >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">{data.label}</CardTitle>
@@ -54,12 +101,24 @@ export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => 
               className="h-6 w-6 p-0"
               onMouseEnter={() => setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedNode(id)
+              }}
             >
               <Info className="h-3 w-3" />
             </Button>
             <Dialog>
               <DialogTrigger asChild>
-                <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedNode(id)
+                  }}
+                >
                   <Settings className="h-3 w-3" />
                 </Button>
               </DialogTrigger>
@@ -71,12 +130,33 @@ export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => 
                   {Object.entries(parameters).map(([key, value]) => (
                     <div key={key} className="space-y-2">
                       <Label htmlFor={key}>{key}</Label>
-                      <Input
-                        id={key}
-                        value={value}
-                        onChange={(e) => updateParameter(key, e.target.value)}
-                        type={typeof value === "number" ? "number" : "text"}
-                      />
+                      {key === "activation" && typeof value === "string" ? (
+                        <Select value={value} onValueChange={(v) => updateParameter(key, v)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="relu">relu</SelectItem>
+                            <SelectItem value="sigmoid">sigmoid</SelectItem>
+                            <SelectItem value="tanh">tanh</SelectItem>
+                            <SelectItem value="softmax">softmax</SelectItem>
+                            <SelectItem value="linear">linear</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : typeof value === "boolean" ? (
+                        <Switch
+                          id={key}
+                          checked={value}
+                          onCheckedChange={(checked: boolean) => updateParameter(key, checked)}
+                        />
+                      ) : (
+                        <Input
+                          id={key}
+                          value={value}
+                          onChange={(e) => updateParameter(key, e.target.value)}
+                          type={typeof value === "number" ? "number" : "text"}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -88,42 +168,41 @@ export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => 
 
       <CardContent className="pt-0">
         {/* Input Handles */}
-        {data.inputs.map((input, index) => (
-          <div key={`input-${index}`} className="relative">
-            <Handle
-              type="target"
-              position={Position.Left}
-              id={input}
-              style={{ top: 20 + index * 25 }}
-              className="w-3 h-3 bg-gray-400"
-            />
-            <span className="text-xs text-gray-600 ml-4" style={{ position: "absolute", top: -8 + index * 25 }}>
-              {input}
-            </span>
-          </div>
-        ))}
+        {data.inputs.map((input, index) => {
+          const top = 20 + index * 28
+          return (
+            <div key={`input-${index}`} className="relative flex items-center h-5">
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={input}
+                style={{ top, left: -7 }}
+                className="w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform"
+              />
+              <span className="text-[11px] text-gray-700 ml-1 select-none whitespace-nowrap">{input}</span>
+            </div>
+          )
+        })}
 
         {/* Output Handles */}
-        {data.outputs.map((output, index) => (
-          <div key={`output-${index}`} className="relative">
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={output}
-              style={{ top: 20 + index * 25 }}
-              className="w-3 h-3 bg-gray-600"
-            />
-            <span
-              className="text-xs text-gray-600 mr-4 text-right"
-              style={{ position: "absolute", top: -8 + index * 25, right: 16 }}
-            >
-              {output}
-            </span>
-          </div>
-        ))}
+        {data.outputs.map((output, index) => {
+          const top = 20 + index * 28
+          return (
+            <div key={`output-${index}`} className="relative flex items-center justify-end h-5">
+              <span className="text-[11px] text-gray-700 mr-1 select-none whitespace-nowrap">{output}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={output}
+                style={{ top, right: -7 }}
+                className="w-3.5 h-3.5 bg-green-600 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform"
+              />
+            </div>
+          )
+        })}
 
         {/* Parameter Summary */}
-        <div className="mt-2 text-xs text-gray-500">
+        <div className="mt-2 text-[10px] text-gray-600 bg-white/60 rounded-md p-1.5 backdrop-blur-sm">
           {Object.entries(parameters)
             .slice(0, 2)
             .map(([key, value]) => (
@@ -136,7 +215,7 @@ export const MLBlockNode = memo(({ data, selected }: NodeProps<MLBlockData>) => 
 
       {/* Tooltip */}
       {showTooltip && (
-        <div className="absolute z-10 p-2 bg-black text-white text-xs rounded shadow-lg -top-8 left-0 whitespace-nowrap">
+        <div className="absolute z-10 p-2 bg-black text-white text-xs rounded shadow-lg -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap">
           {getBlockDescription(data.blockType)}
         </div>
       )}

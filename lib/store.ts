@@ -33,12 +33,14 @@ interface Connection {
 interface BlockMLState {
   nodes: BlockNode[]
   edges: Connection[]
+  selectedNodeId: string | null
   setNodes: (nodes: BlockNode[]) => void
   setEdges: (edges: Connection[]) => void
   setConnections: (connections: Connection[]) => void
   addNode: (node: BlockNode) => void
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, data: any) => void
+  setSelectedNode: (id: string | null) => void
   saveProject: () => void
   loadProject: () => void
 }
@@ -46,6 +48,7 @@ interface BlockMLState {
 export const useBlockMLStore = create<BlockMLState>((set, get) => ({
   nodes: [],
   edges: [],
+  selectedNodeId: null,
 
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
@@ -63,6 +66,8 @@ export const useBlockMLStore = create<BlockMLState>((set, get) => ({
     set((state) => ({
       nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node)),
     })),
+
+  setSelectedNode: (id) => set({ selectedNodeId: id }),
 
   saveProject: () => {
     const { nodes, edges } = get()

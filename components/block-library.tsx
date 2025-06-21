@@ -177,7 +177,10 @@ export function BlockLibrary() {
   const dragImageRef = useRef<HTMLDivElement | null>(null)
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
+    // Primary custom MIME type for our application
     event.dataTransfer.setData("application/blockml", nodeType)
+    // Fallback plain-text MIME type (helps some browsers/platforms show a valid cursor)
+    event.dataTransfer.setData("text/plain", nodeType)
     event.dataTransfer.effectAllowed = "copy"
 
     if (dragImageRef.current) {

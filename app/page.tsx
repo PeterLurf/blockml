@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { GraphEditor } from "@/components/graph-editor"
+import { useState, useEffect } from "react"
+import { GraphEditor } from "@/components/graph-editor-reactflow"
 import { BlockLibrary } from "@/components/block-library"
 import { TrainingPanel } from "@/components/training-panel"
 import { ExportPanel } from "@/components/export-panel"
@@ -11,10 +11,20 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Play, Square, Download, Save, FolderOpen, Brain } from "lucide-react"
 import { useBlockMLStore } from "@/lib/store"
+import { BlockInspector } from "@/components/block-inspector"
 
 export default function BlockMLApp() {
   const [isTraining, setIsTraining] = useState(false)
-  const { nodes, edges, saveProject, loadProject } = useBlockMLStore()
+  const [activeTab, setActiveTab] = useState<"block" | "training" | "export" | "assistant">("training")
+
+  const { nodes, edges, saveProject, loadProject, selectedNodeId } = useBlockMLStore()
+
+  // When a node is selected elsewhere, automatically switch to the Block tab
+  useEffect(() => {
+    if (selectedNodeId) {
+      setActiveTab("block")
+    }
+  }, [selectedNodeId])
 
   const handleStartTraining = () => {
     setIsTraining(true)
@@ -111,8 +121,14 @@ export default function BlockMLApp() {
 
         {/* Right Sidebar - Panels */}
         <div className="w-96 bg-white/70 backdrop-blur-lg border-l border-gray-200/80 overflow-hidden shadow-sm">
-          <Tabs defaultValue="training" className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3 flex-shrink-0 bg-gray-100/70 backdrop-blur-sm">
+          <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-4 flex-shrink-0 bg-gray-100/70 backdrop-blur-sm">
+              <TabsTrigger 
+                value="block"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700"
+              >
+                Block
+              </TabsTrigger>
               <TabsTrigger 
                 value="training"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-700"
@@ -132,6 +148,12 @@ export default function BlockMLApp() {
                 Assistant
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="block" className="flex-1 overflow-hidden">
+              <div className="h-full overflow-y-auto">
+                <BlockInspector />
+              </div>
+            </TabsContent>
 
             <TabsContent value="training" className="flex-1 overflow-hidden">
               <div className="h-full overflow-y-auto">

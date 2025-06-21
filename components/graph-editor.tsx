@@ -386,41 +386,65 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
     }
   }, [connecting, pan, zoom, isPanning, draggedNode, nodeDragStart, nodes, setNodes])
 
-  // Drag and Drop Handlers
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'copy';
-    }
-    setIsDragOverCanvas(true);
-  }, []);
+  // FINAL, STABLE DRAG-AND-DROP IMPLEMENTATION
+  useEffect(() => {
+    const canvasEl = canvasRef.current;
+    if (!canvasEl) return;
 
-  const handleDragLeave = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOverCanvas(false);
-  }, []);
+    // Use refs to access the latest state within handlers without making them dependencies
+    const panRef = { current: pan };
+    panRef.current = pan;
+    const zoomRef = { current: zoom };
+    zoomRef.current = zoom;
+    const addNodeRef = { current: addNode };
+    addNodeRef.current = addNode;
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragOverCanvas(true);
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault(); // This is the most crucial part
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragOverCanvas(false);
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
       setIsDragOverCanvas(false);
 
-      const canvasBounds = canvasRef.current?.getBoundingClientRect();
-      const blockType = event.dataTransfer.getData('application/blockml');
+      if (!e.dataTransfer) return;
+
+      // Retrieve the block type that was set during the drag operation in `BlockLibrary`.
+      // `BlockLibrary` stores the value under the custom mime-type `application/blockml`,
+      // so we try that first and gracefully fall back to `text/plain` for backward compatibility.
+      const blockType =
+        e.dataTransfer.getData("application/blockml") ||
+        e.dataTransfer.getData("text/plain");
+      const canvasBounds = canvasEl.getBoundingClientRect();
+
+      const currentPan = panRef.current;
+      const currentZoom = zoomRef.current;
+      const currentAddNode = addNodeRef.current;
 
       if (!blockType || !canvasBounds) {
-        console.error('Drop failed: Missing data.', { blockType, canvasBounds });
         return;
       }
 
       const position = {
-        x: (event.clientX - canvasBounds.left - pan.x) / zoom,
-        y: (event.clientY - canvasBounds.top - pan.y) / zoom,
+        x: (e.clientX - canvasBounds.left - currentPan.x) / currentZoom,
+        y: (e.clientY - canvasBounds.top - currentPan.y) / currentZoom,
       };
 
       const blockDef = BLOCK_DEFINITIONS[blockType];
       if (!blockDef) {
-        console.error(`Block definition not found for type: ${blockType}`);
         return;
       }
 
@@ -439,11 +463,21 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
           parameters: { ...blockDef.parameters },
         },
       };
+      currentAddNode(newNode);
+    };
 
-      addNode(newNode);
-    },
-    [pan, zoom, addNode]
-  );
+    canvasEl.addEventListener('dragenter', handleDragEnter);
+    canvasEl.addEventListener('dragover', handleDragOver);
+    canvasEl.addEventListener('dragleave', handleDragLeave);
+    canvasEl.addEventListener('drop', handleDrop);
+
+    return () => {
+      canvasEl.removeEventListener('dragenter', handleDragEnter);
+      canvasEl.removeEventListener('dragover', handleDragOver);
+      canvasEl.removeEventListener('dragleave', handleDragLeave);
+      canvasEl.removeEventListener('drop', handleDrop);
+    };
+  }, [addNode]); // Reruns only if addNode function identity changes (which it shouldn't)
 
   // RESTORED: All other event handlers for nodes, ports, and connections
   const handleNodeMouseDown = useCallback(
@@ -825,9 +859,6 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         onMouseDown={handleCanvasMouseDown}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
         style={{
           backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
           backgroundSize: `${20 * zoom}px ${20 * zoom}px`,

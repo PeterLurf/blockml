@@ -21,14 +21,16 @@ interface TrainingPanelProps {
 }
 
 export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: TrainingPanelProps) {
-  const [dataset, setDataset] = useState("mnist")
   const [epochs, setEpochs] = useState(10)
   const [batchSize, setBatchSize] = useState(32)
   const [learningRate, setLearningRate] = useState(0.001)
-  const [optimizer, setOptimizer] = useState<"adam" | "sgd">("adam")
-  const [lossFunction, setLossFunction] = useState<"categoricalCrossentropy" | "meanSquaredError">(
-    "categoricalCrossentropy",
-  )
+
+  // Derived training selections based on blocks in the graph
+  const { nodes, edges } = useBlockMLStore()
+
+  const dataset = nodes.find((n) => n.data.blockType === "DataLoader")?.data.parameters.dataset ?? "mnist"
+  const optimizer = nodes.find((n) => n.data.blockType === "Adam" || n.data.blockType === "SGD")?.data.blockType.toLowerCase() as "adam" | "sgd" ?? "adam"
+  const lossFunction = nodes.find((n) => n.data.blockType === "CrossEntropy" || n.data.blockType === "MSE")?.data.blockType === "MSE" ? "meanSquaredError" : "categoricalCrossentropy"
 
   const [currentEpoch, setCurrentEpoch] = useState(0)
   const [trainingData, setTrainingData] = useState<TrainingMetrics[]>([])
@@ -39,7 +41,6 @@ export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: T
   const [initError, setInitError] = useState<string | null>(null)
   const [trainingError, setTrainingError] = useState<string | null>(null)
 
-  const { nodes, edges } = useBlockMLStore()
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Initialize WebGPU runtime on component mount
@@ -91,8 +92,8 @@ export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: T
       const model = await webgpuRuntime.buildModelFromGraph(nodes, edges)
       setModelSummary(webgpuRuntime.getModelSummary())
 
-      // Load dataset
-      console.log("Loading dataset...")
+      // Load dataset derived from DataLoader block
+      console.log("Loading dataset", dataset)
       await webgpuRuntime.loadDataset(dataset)
 
       // Configure training
@@ -171,70 +172,51 @@ export function TrainingPanel({ isTraining, onStartTraining, onStopTraining }: T
           <CardTitle className="text-lg">Training Configuration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="dataset">Dataset</Label>
-              <Select value={dataset} onValueChange={setDataset}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select dataset" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mnist">MNIST (Handwritten Digits)</SelectItem>
-                  <SelectItem value="cifar10">CIFAR-10 (Images)</SelectItem>
-                  <SelectItem value="iris">Iris (Classification)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label>Dataset</Label>
+            <p className="text-sm bg-gray-100 p-2 rounded-md border inline-block">{dataset}</p>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="optimizer">Optimizer</Label>
-              <Select value={optimizer} onValueChange={(value: "adam" | "sgd") => setOptimizer(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="adam">Adam</SelectItem>
-                  <SelectItem value="sgd">SGD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label>Optimizer</Label>
+            <p className="text-sm bg-gray-100 p-2 rounded-md border inline-block capitalize">{optimizer}</p>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="epochs">Epochs</Label>
-              <Input
-                id="epochs"
-                type="number"
-                value={epochs}
-                onChange={(e) => setEpochs(Number.parseInt(e.target.value) || 10)}
-                min="1"
-                max="100"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="epochs">Epochs</Label>
+            <Input
+              id="epochs"
+              type="number"
+              value={epochs}
+              onChange={(e) => setEpochs(Number.parseInt(e.target.value) || 10)}
+              min="1"
+              max="100"
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="batchSize">Batch Size</Label>
-              <Input
-                id="batchSize"
-                type="number"
-                value={batchSize}
-                onChange={(e) => setBatchSize(Number.parseInt(e.target.value) || 32)}
-                min="1"
-                max="512"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="batchSize">Batch Size</Label>
+            <Input
+              id="batchSize"
+              type="number"
+              value={batchSize}
+              onChange={(e) => setBatchSize(Number.parseInt(e.target.value) || 32)}
+              min="1"
+              max="512"
+            />
+          </div>
 
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="learningRate">Learning Rate</Label>
-              <Input
-                id="learningRate"
-                type="number"
-                step="0.0001"
-                value={learningRate}
-                onChange={(e) => setLearningRate(Number.parseFloat(e.target.value) || 0.001)}
-                min="0.0001"
-                max="1"
-              />
-            </div>
+          <div className="space-y-2 col-span-2">
+            <Label htmlFor="learningRate">Learning Rate</Label>
+            <Input
+              id="learningRate"
+              type="number"
+              step="0.0001"
+              value={learningRate}
+              onChange={(e) => setLearningRate(Number.parseFloat(e.target.value) || 0.001)}
+              min="0.0001"
+              max="1"
+            />
           </div>
 
           <div className="flex space-x-2">
