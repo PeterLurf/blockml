@@ -179,4 +179,25 @@ declare namespace JSX {
   interface IntrinsicElements {
     [elemName: string]: any
   }
+
+  
+}
+
+declare module "sonner" {
+  export const Toaster: any
+}
+
+declare module "react-hook-form" {
+  export const Controller: any
+  export type ControllerProps<T extends any = any, U extends any = any> = any
+  export type FieldPath<T extends any = any> = any
+  export type FieldValues = any
+  export const FormProvider: any
+  export const useFormContext: any
+}
+
+declare module "react-resizable-panels" {
+  export const PanelGroup: any
+  export const Panel: any
+  export const PanelResizeHandle: any
 }
