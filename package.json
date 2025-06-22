@@ -19,7 +19,7 @@
     "dist": "npm run build && electron-builder --publish=never",
     "dist-all": "npm run build && electron-builder -mwl --publish=never",
     "postinstall": "electron-builder install-app-deps",
-    "export": "next build && next export"
+    "export": "next build"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.2",
