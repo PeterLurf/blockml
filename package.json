@@ -54,7 +54,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "zustand": "latest",
-    "@google/generative-ai": "^0.5.2"
+    "@google/generative-ai": "^0.7.0"
   },
   "devDependencies": {
     "@types/node": "^22",
