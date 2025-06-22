@@ -344,13 +344,7 @@ export const BLOCK_DEFINITIONS: Record<string, BlockDefinition> = {
         description: "Model gradients",
       },
     ],
-    outputs: [
-      {
-        name: "updates",
-        shape: { dimensions: [-1], dtype: "float32" },
-        description: "Parameter updates",
-      },
-    ],
+    outputs: [],
     parameters: { learning_rate: 0.01, momentum: 0.0 },
   },
 
@@ -363,13 +357,7 @@ export const BLOCK_DEFINITIONS: Record<string, BlockDefinition> = {
         description: "Model gradients",
       },
     ],
-    outputs: [
-      {
-        name: "updates",
-        shape: { dimensions: [-1], dtype: "float32" },
-        description: "Parameter updates",
-      },
-    ],
+    outputs: [],
     parameters: { learning_rate: 0.001, beta1: 0.9, beta2: 0.999, epsilon: 1e-7 },
   },
 }
@@ -408,21 +396,44 @@ export class TensorValidator {
       }
     }
 
+
+    // Infer runtime shapes based on block definitions and parameters
+    const runtimeSourceShape =
+      this.inferOutputShape(sourceBlock, sourcePort) ?? sourcePortDef.shape
+    const runtimeTargetShape = targetPortDef.shape
+
+    if (!runtimeSourceShape || !runtimeTargetShape) {
+      return {
+        isValid: false,
+        error: "Unable to resolve port shapes at runtime",
+      }
+    }
+
+    // Optimizer-specific rules
+    const isOptimizerTarget = this.isOptimizer(targetBlock.data.blockType)
+    if (isOptimizerTarget && !this.isLoss(sourceBlock.data.blockType)) {
+      return {
+        isValid: false,
+        error: "Optimizer must be fed by a loss block (e.g. CrossEntropy, MSE)",
+      }
+    }
+
     // Check data type compatibility
-    if (sourcePortDef.shape.dtype !== targetPortDef.shape.dtype) {
-      const compatibleTypes = this.getCompatibleTypes(sourcePortDef.shape.dtype)
-      if (!compatibleTypes.includes(targetPortDef.shape.dtype)) {
+    // Check data type compatibility (after inference)
+    if (runtimeSourceShape.dtype !== runtimeTargetShape.dtype) {
+      const compatibleTypes = this.getCompatibleTypes(runtimeSourceShape.dtype)
+      if (!compatibleTypes.includes(runtimeTargetShape.dtype)) {
         return {
           isValid: false,
-          error: `Data type mismatch: ${sourcePortDef.shape.dtype} cannot connect to ${targetPortDef.shape.dtype}`,
+          error: `Data type mismatch: ${runtimeSourceShape.dtype} cannot connect to ${runtimeTargetShape.dtype}`,
         }
       }
     }
 
     // Check shape compatibility
     const shapeValidation = this.validateShapeCompatibility(
-      sourcePortDef.shape,
-      targetPortDef.shape,
+      runtimeSourceShape,
+      runtimeTargetShape,
       sourceBlock.data.parameters,
       targetBlock.data.parameters,
     )
@@ -438,6 +449,14 @@ export class TensorValidator {
       isValid: true,
       inferredShape: this.inferOutputShape(sourceBlock, sourcePort) ?? undefined,
     }
+  }
+
+  private static isOptimizer(blockType: string): boolean {
+    return ["SGD", "Adam"].includes(blockType)
+  }
+
+  private static isLoss(blockType: string): boolean {
+    return ["CrossEntropy", "MSE"].includes(blockType)
   }
 
   private static getCompatibleTypes(dtype: string): string[] {
@@ -564,6 +583,35 @@ export class TensorValidator {
 
   static validateGraph(nodes: any[], connections: any[]): ValidationResult[] {
     const results: ValidationResult[] = []
+
+    // Enforce only one optimizer in the graph
+    const optimizerNodes = nodes.filter((n) => this.isOptimizer(n.data.blockType))
+    if (optimizerNodes.length > 1) {
+      results.push({
+        isValid: false,
+        error: "Graph contains multiple optimizers; only one is allowed",
+      })
+    }
+
+    // Ensure each optimizer has exactly one incoming connection from a loss block
+    for (const opt of optimizerNodes) {
+      const incoming = connections.filter((c) => c.target === opt.id)
+      if (incoming.length !== 1) {
+        results.push({
+          isValid: false,
+          error: `${opt.data.label || opt.data.blockType} must have exactly one loss input`,
+        })
+      } else {
+        // verify the incoming source is a loss block
+        const srcNode = nodes.find((n) => n.id === incoming[0].source)
+        if (srcNode && !this.isLoss(srcNode.data.blockType)) {
+          results.push({
+            isValid: false,
+            error: `${opt.data.label || opt.data.blockType} input must come from a loss block`,
+          })
+        }
+      }
+    }
 
     for (const connection of connections) {
       const sourceNode = nodes.find((n) => n.id === connection.source)

@@ -31,6 +31,7 @@ interface Connection {
 }
 
 interface BlockMLState {
+  compatibleIds: string[]
   nodes: BlockNode[]
   edges: Connection[]
   selectedNodeId: string | null
@@ -41,6 +42,7 @@ interface BlockMLState {
   removeNode: (nodeId: string) => void
   updateNode: (nodeId: string, data: any) => void
   setSelectedNode: (id: string | null) => void
+  setCompatibleIds: (ids: string[]) => void
   saveProject: () => void
   loadProject: () => void
 }
@@ -49,6 +51,7 @@ export const useBlockMLStore = create((set: any, get: any) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  compatibleIds: [],
 
   setNodes: (nodes: BlockNode[]) => set({ nodes }),
   setEdges: (edges: Connection[]) => set({ edges }),
@@ -67,7 +70,12 @@ export const useBlockMLStore = create((set: any, get: any) => ({
       nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node)),
     })),
 
-  setSelectedNode: (id: string | null) => set({ selectedNodeId: id }),
+  setSelectedNode: (id: string | null) =>
+    set((state: BlockMLState) =>
+      state.selectedNodeId === id ? state : { selectedNodeId: id },
+    ),
+
+  setCompatibleIds: (ids: string[]) => set({ compatibleIds: ids }),
 
   saveProject: () => {
     const { nodes, edges } = get()

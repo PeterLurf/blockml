@@ -96,7 +96,6 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
   const [spacePressed, setSpacePressed] = useState(false)
 
   // Node and Connection State
-  const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [draggedNode, setDraggedNode] = useState<string | null>(null)
   const [nodeDragStart, setNodeDragStart] = useState<{
     mouseX: number
@@ -123,7 +122,16 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
   const [isDragOverCanvas, setIsDragOverCanvas] = useState(false)
 
   // Store
-  const { nodes, edges: connections, setNodes, addNode, removeNode, setConnections: setStoreConnections } = useBlockMLStore()
+  const {
+    nodes,
+    edges: connections,
+    setNodes,
+    addNode,
+    removeNode,
+    setConnections: setStoreConnections,
+    selectedNodeId,
+    setSelectedNode,
+  } = useBlockMLStore()
 
   // Validation and Utility Functions
   const validateAllConnections = useCallback(() => {
@@ -296,7 +304,7 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         setSelectedNode(null)
       }
     },
-    [pan, connecting, spacePressed],
+    [pan, connecting, spacePressed, setSelectedNode],
   )
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
@@ -497,7 +505,7 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
         nodeY: node.position.y,
       })
     },
-    [nodes],
+    [nodes, setSelectedNode],
   )
 
   const handleDeleteNode = useCallback(
@@ -965,13 +973,13 @@ export function GraphEditor({ isTraining }: GraphEditorProps) {
             style={{
               transform: `translate(${node.position.x * zoom + pan.x}px, ${node.position.y * zoom + pan.y}px) scale(${zoom})`,
               transformOrigin: "top left",
-              zIndex: selectedNode === node.id ? 10 : 2,
-              pointerEvents: isDragOverCanvas ? 'none' : 'auto',
+              zIndex: selectedNodeId === node.id ? 10 : 2,
+              pointerEvents: isDragOverCanvas ? "none" : "auto",
             }}
           >
             <MLBlockNode
               node={node}
-              isSelected={selectedNode === node.id}
+              isSelected={selectedNodeId === node.id}
               isTraining={isTraining}
               connecting={connecting}
               compatiblePorts={compatiblePorts}
@@ -1108,7 +1116,7 @@ function MLBlockNode({
             const isConnecting = connecting !== null
 
             return (
-              <div key={input} className="flex items-center relative">                <div
+              <div key={input} className="relative flex items-center h-6">                <div
                   className={`w-4 h-4 rounded-full cursor-pointer border-2 border-white shadow-sm transition-all duration-200 ${getPortColor(
                     input,
                     "input",
@@ -1123,8 +1131,9 @@ function MLBlockNode({
                   style={{
                     position: "absolute",
                     left: "-10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
                     zIndex: 30,
-                    top: "2px",
                   }}
                 />
                 <span className="text-xs text-gray-700 ml-4 font-medium select-none">{input}</span>
@@ -1146,7 +1155,7 @@ function MLBlockNode({
             const isConnecting = connecting !== null
 
             return (
-              <div key={output} className="flex items-center justify-end relative">
+              <div key={output} className="relative flex items-center justify-end h-6">
                 {isCompatible && (
                   <Badge variant="outline" className="mr-2 text-xs bg-green-50 text-green-700 border-green-200 animate-pulse">
                     ✓
@@ -1167,8 +1176,9 @@ function MLBlockNode({
                   style={{
                     position: "absolute",
                     right: "-10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
                     zIndex: 30,
-                    top: "2px",
                   }}
                 />
               </div>
